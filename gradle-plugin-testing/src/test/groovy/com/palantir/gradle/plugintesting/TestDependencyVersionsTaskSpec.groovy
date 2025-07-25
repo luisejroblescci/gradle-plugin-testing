@@ -17,6 +17,7 @@
 package com.palantir.gradle.plugintesting
 
 import static TestDependencyVersions.resolve
+import com.palantir.gradle.plugintesting.PluginTestingPlugin
 
 class TestDependencyVersionsTaskSpec extends AbstractTestingPluginSpec {
 
@@ -62,7 +63,9 @@ class TestDependencyVersionsTaskSpec extends AbstractTestingPluginSpec {
         outputFile.text.contains('org.ow2.asm:asm=9.7.1')
         outputFile.text.contains('org.apache.httpcomponents.client5:httpclient5=5.3.1')
         outputFile.text.contains('com.palantir.gradle.consistentversions:gradle-consistent-versions=2.31.0')
-        outputFile.text.contains('com.palantir.gradle.plugintesting:plugin-testing-core')
+        PluginTestingPlugin.CORE_MAVEN_NAMES.each { name ->
+            assert outputFile.text.contains("com.palantir.gradle.plugintesting:${name}")
+        }
     }
 
     def 'write versions with GCV'() {
@@ -108,5 +111,8 @@ class TestDependencyVersionsTaskSpec extends AbstractTestingPluginSpec {
         outputFile.exists()
         !outputFile.text.contains('null')
         outputFile.text.contains('org.junit.jupiter:junit-jupiter')
+        PluginTestingPlugin.CORE_MAVEN_NAMES.each { name ->
+            assert outputFile.text.contains("com.palantir.gradle.plugintesting:${name}")
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * (c) Copyright 2024 Palantir Technologies Inc. All rights reserved.
+ * (c) Copyright 2025 Palantir Technologies Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.palantir.gradle.plugintesting;
 
 import com.palantir.baseline.tasks.CheckUnusedDependenciesParentTask;
+import java.util.List;
 import java.util.Optional;
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectProvider;
@@ -35,9 +35,13 @@ public class PluginTestingPlugin implements Plugin<Project> {
      */
     static final String PLUGIN_VERSION_PROPERTY_NAME = "pluginTestingPluginVersion";
 
+    static final List<String> CORE_MAVEN_NAMES = List.of("plugin-testing-core", "configuration-cache-spec");
+
     private static final String MAVEN_GROUP = "com.palantir.gradle.plugintesting";
-    private static final String CORE_MAVEN_NAME = "plugin-testing-core";
-    private static final String CORE_MAVEN_COORDINATES = MAVEN_GROUP + ":" + CORE_MAVEN_NAME;
+
+    private static String coreMavenCoordinates(String name) {
+        return MAVEN_GROUP + ":" + name;
+    }
 
     /**
      * Applies the plugin to the given project.
@@ -102,7 +106,7 @@ public class PluginTestingPlugin implements Plugin<Project> {
     }
 
     /**
-     * Add test dependency on the utility jar to the project so that an explicit dependency statement isn't needed.
+     * Add test dependency on the utility jars to the project so that an explicit dependency statement isn't needed.
      * This is done by getting the Implementation-Version metainfo from the compiled jar when this plugin is used
      * for real, but that doesn't work when running tests in this repo, so we can also look it up via a gradle property
      * that tests set.
@@ -122,13 +126,14 @@ public class PluginTestingPlugin implements Plugin<Project> {
 
         String testImplConfigName = testSourceSet.getImplementationConfigurationName();
         project.getConfigurations().named(testImplConfigName).configure(conf -> {
-            conf.getDependencies().add(project.getDependencies().create(CORE_MAVEN_COORDINATES + ":" + version));
+            CORE_MAVEN_NAMES.forEach(name -> conf.getDependencies()
+                    .add(project.getDependencies().create(coreMavenCoordinates(name) + ":" + version)));
         });
 
         // add to ignore list for CheckUnusedDependencies
         project.getPluginManager().withPlugin("com.palantir.baseline-exact-dependencies", _unused -> {
             project.getTasks().withType(CheckUnusedDependenciesParentTask.class).configureEach(task -> {
-                task.ignore(MAVEN_GROUP, CORE_MAVEN_NAME);
+                CORE_MAVEN_NAMES.forEach(name -> task.ignore(MAVEN_GROUP, name));
             });
         });
     }
