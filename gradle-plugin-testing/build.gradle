@@ -37,6 +37,7 @@ test {
 
     // Added as a jar the so in nebula-tests needs to exist in maven local
     dependsOn tasks.findByPath(':plugin-testing-core:publishToMavenLocal')
+    dependsOn tasks.findByPath(':configuration-cache-spec:publishToMavenLocal')
 }
 
 gradleTestUtils {
