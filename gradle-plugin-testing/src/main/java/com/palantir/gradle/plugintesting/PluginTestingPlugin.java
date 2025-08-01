@@ -16,14 +16,17 @@
 package com.palantir.gradle.plugintesting;
 
 import com.palantir.baseline.tasks.CheckUnusedDependenciesParentTask;
+import com.palantir.gradle.plugintesting.TestDependencyVersionsTask.TestDependency;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectProvider;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.TaskProvider;
@@ -67,26 +70,32 @@ public class PluginTestingPlugin implements Plugin<Project> {
                     SourceSet sourceSet = sourceSetContainer.getByName(SourceSet.TEST_SOURCE_SET_NAME);
                     NamedDomainObjectProvider<Configuration> testRuntimeConfig =
                             project.getConfigurations().named(sourceSet.getRuntimeClasspathConfigurationName());
-                    task.getClasspathConfiguration().set(testRuntimeConfig);
+                    Provider<Iterable<TestDependency>> testRuntimeDependencies = testRuntimeConfig.map(
+                            config -> config.getResolvedConfiguration().getFirstLevelModuleDependencies().stream()
+                                    .map(dep -> new TestDependency(
+                                            dep.getModuleGroup(), dep.getModuleName(), dep.getModuleVersion()))
+                                    .collect(Collectors.toUnmodifiableSet()));
+                    task.getTestRuntimeDependencies().set(testRuntimeDependencies);
                 });
+
+        Provider<String> testDependenciesFileAbsolutePath = project.provider(() ->
+                testDependencyVersions.get().getOutputFile().get().getAsFile().getAbsolutePath());
 
         project.getTasks().withType(Test.class).configureEach(test -> {
             test.dependsOn(testDependencyVersions);
 
-            // need to use the doFirst so that any custom settings on the extension are applied before reading
-            // the values and setting the system properties.
-            Action<Task> action = new Action<>() {
+            // doFirst so any custom settings on the extension are applied before reading the values and setting
+            // the system properties.
+
+            // Do not replace with a lambda! Lambdas aren't build cacheable.
+            // https://github.com/gradle/gradle/issues/5510
+            test.doFirst(new Action<>() {
                 @Override
                 public void execute(Task _task) {
                     // add system property for name of file to read for dependency versions
                     test.systemProperty(
                             TestDependencyVersions.TEST_DEPENDENCIES_FILE_SYSTEM_PROPERTY,
-                            testDependencyVersions
-                                    .get()
-                                    .getOutputFile()
-                                    .get()
-                                    .getAsFile()
-                                    .getAbsolutePath());
+                            testDependenciesFileAbsolutePath.get());
 
                     // add system property for what versions of gradle should be used in tests
                     String versions =
@@ -100,8 +109,7 @@ public class PluginTestingPlugin implements Plugin<Project> {
                         test.systemProperty("ignoreDeprecations", "true");
                     }
                 }
-            };
-            test.doFirst(action);
+            });
         });
     }
 
