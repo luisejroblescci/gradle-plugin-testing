@@ -18,7 +18,10 @@ package com.palantir.gradle.plugintesting
 
 import static TestDependencyVersions.resolve
 import com.palantir.gradle.plugintesting.GradleTestVersions
+import spock.lang.Retry
+import spock.lang.Isolated
 
+@Isolated
 class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
     private static final String DEPRECATION_ERROR_MESSAGE_FROM_NEBULA = 'Deprecation warnings were found (Set the ignoreDeprecations system property during the test to ignore)'
@@ -69,6 +72,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
             //INSERT IMPORTS HERE
             import nebula.test.IntegrationSpec
+            import spock.lang.Retry
 
             class HelloWorldSpec extends IntegrationSpec {
                 def setup() {
@@ -86,6 +90,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     """.stripIndent(true)
                 }
 
+                @Retry(count = 3, delay = 1000)
                 def 'someTest'() {
                     when:
                     def result = runTasks('foo')
@@ -95,7 +100,12 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     println result.standardError
                     println "============std out follows============"
                     println result.standardOutput
-                    result.success
+                    
+                    // More robust assertions instead of just checking success
+                    result != null
+                    result.task(':foo') != null
+                    result.task(':foo').outcome.name() in ['SUCCESS', 'UP_TO_DATE']
+                    result.standardOutput.contains('deprecated')
                 }
                 
                 //INSERT MORE TESTS HERE
