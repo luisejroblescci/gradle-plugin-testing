@@ -6,7 +6,6 @@
 
 Gradle plugin and helpers to assist with writing tests for other gradle plugins.
 
-tessst
 
 ## Using the Plugin
     
