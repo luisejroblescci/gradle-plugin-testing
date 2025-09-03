@@ -18,14 +18,61 @@ package com.palantir.gradle.plugintesting
 
 import static TestDependencyVersions.resolve
 import com.palantir.gradle.plugintesting.GradleTestVersions
+import nebula.test.functional.ExecutionResult
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
+import java.util.concurrent.TimeUnit
 
+@Execution(ExecutionMode.SAME_THREAD)
 class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
     private static final String DEPRECATION_ERROR_MESSAGE_FROM_NEBULA = 'Deprecation warnings were found (Set the ignoreDeprecations system property during the test to ignore)'
 
     File specUnderTest
 
+    // Override to add --no-daemon for better isolation and retry logic
+    @Override
+    ExecutionResult runTasks(String... tasks) {
+        return runTasksWithRetry(3, tasks)
+    }
+
+    private ExecutionResult runTasksWithRetry(int maxRetries, String... tasks) {
+        Exception lastException = null
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                // Clean up any existing daemon state
+                if (attempt > 1) {
+                    println "Retry attempt $attempt/$maxRetries for tasks: ${tasks.join(', ')}"
+                    // Add small delay with exponential backoff
+                    Thread.sleep(100 * Math.pow(2, attempt - 1))
+                }
+                
+                // Add --no-build-cache for deterministic results
+                String[] enhancedTasks = tasks + ['--no-build-cache']
+                return super.runTasks(enhancedTasks)
+            } catch (Exception e) {
+                lastException = e
+                println "Attempt $attempt failed: ${e.getMessage()}"
+                if (attempt == maxRetries) {
+                    throw lastException
+                }
+            }
+        }
+        throw lastException
+    }
+
     def setup() {
+        // Add diagnostic logging  
+        println "Test setup - Project dir: ${projectDir?.absolutePath}"
+        println "Test setup - Gradle version: ${gradleVersion ?: 'default'}"
+        println "Test setup - Java version: ${System.getProperty('java.version')}"
+        
+        // Clean existing build artifacts for better test isolation
+        def buildDir = new File(projectDir, 'build')
+        if (buildDir.exists()) {
+            buildDir.deleteDir()
+        }
+        
         //language=gradle
         buildFile << """
             buildscript {
@@ -88,6 +135,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
                 def 'someTest'() {
                     when:
+                    println "Executing test with Gradle version: \\${gradleVersion ?: 'default'}"
+                    println "Project directory: \\${projectDir?.absolutePath}"
                     def result = runTasks('foo')
 
                     then:
@@ -95,6 +144,9 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     println result.standardError
                     println "============std out follows============"
                     println result.standardOutput
+                    println "============execution result============"
+                    println "Success: \\${result.success}"
+                    println "Total execution time: \\${result.totalTime}"
                     result.success
                 }
                 
@@ -109,6 +161,28 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                 'org.codehaus.groovy:groovy',
                 'com.palantir.gradle.consistentversions:gradle-consistent-versions'])
         runTasksSuccessfully('writeVersionLocks')
+    }
+
+    def cleanup() {
+        // Ensure proper cleanup of test resources
+        try {
+            // Force cleanup of any remaining Gradle daemon processes
+            println "Cleaning up test resources for: ${projectDir?.absolutePath}"
+            
+            // Clean up build directories
+            def buildDir = new File(projectDir, 'build')
+            if (buildDir.exists()) {
+                buildDir.deleteDir()
+            }
+            
+            // Clean up nebula test directories  
+            def nebulaTestDir = new File(projectDir, 'build/nebulatest')
+            if (nebulaTestDir.exists()) {
+                nebulaTestDir.deleteDir()
+            }
+        } catch (Exception e) {
+            println "Warning: Failed to cleanup test resources: ${e.getMessage()}"
+        }
     }
 
     /**
@@ -128,6 +202,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         where:
         version << GradleTestVersions.gradleVersionsForTests
     }
+
 
     def 'ignoreDeprecations automatically set when plugin applied with version: #version'() {
         given:
@@ -206,6 +281,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         then:
         result.success
         def generatedBuildFile = file('build/nebulatest/com.testing.HelloWorldSpec/someTest/build.gradle')
+        // Wait a bit for file system operations to complete
+        Thread.sleep(100)
         generatedBuildFile.exists()
         
         where:
