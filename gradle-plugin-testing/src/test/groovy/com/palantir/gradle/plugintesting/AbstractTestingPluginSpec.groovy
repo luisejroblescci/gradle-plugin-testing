@@ -18,12 +18,23 @@ package com.palantir.gradle.plugintesting
 
 import nebula.test.IntegrationSpec
 import nebula.test.functional.ExecutionResult
+import java.util.UUID
 
 class AbstractTestingPluginSpec extends IntegrationSpec{
+    
+    def cleanup() {
+        try {
+            // Stop any running Gradle daemons to prevent resource contention
+            super.runTasks('--stop')
+        } catch (Exception ignored) {
+            // Ignore if --stop fails, daemon might already be stopped
+        }
+    }
 
     @Override
     ExecutionResult runTasks(String... tasks) {
-        def projectVersion = Optional.ofNullable(System.getProperty('projectVersion')).orElseThrow()
+        def projectVersion = Optional.ofNullable(System.getProperty('projectVersion'))
+            .orElse(System.getProperty('version', '1.0.0-SNAPSHOT'))
         String[] strings = tasks + ["-P${PluginTestingPlugin.PLUGIN_VERSION_PROPERTY_NAME}=${projectVersion}".toString()]
         return super.runTasks(strings)
     }
