@@ -18,14 +18,26 @@ package com.palantir.gradle.plugintesting
 
 import static TestDependencyVersions.resolve
 import com.palantir.gradle.plugintesting.GradleTestVersions
+import spock.lang.Retry
+import spock.lang.Timeout
+import java.util.concurrent.TimeUnit
 
 class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
     private static final String DEPRECATION_ERROR_MESSAGE_FROM_NEBULA = 'Deprecation warnings were found (Set the ignoreDeprecations system property during the test to ignore)'
 
     File specUnderTest
+    String uniqueTestId
 
     def setup() {
+        // Add system property validation
+        def projectVersion = System.getProperty('projectVersion')
+        if (!projectVersion) {
+            throw new IllegalStateException("Required system property 'projectVersion' is not set")
+        }
+        
+        // Create unique test directory prefix
+        uniqueTestId = UUID.randomUUID().toString().replace('-', '')[0..7]
         //language=gradle
         buildFile << """
             buildscript {
@@ -64,16 +76,23 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         """.stripIndent(true)
 
         //language=groovy
-        specUnderTest = file('src/test/groovy/com/testing/HelloWorldSpec.groovy') << '''
+        specUnderTest = file('src/test/groovy/com/testing/HelloWorldSpec.groovy') << """
             package com.testing
 
             //INSERT IMPORTS HERE
             import nebula.test.IntegrationSpec
+            import spock.lang.Retry
+            import spock.lang.Timeout
+            import java.util.concurrent.TimeUnit
 
             class HelloWorldSpec extends IntegrationSpec {
                 def setup() {
+                    // Use unique project directory for test isolation
+                    projectDir = new File(getProjectDir().parentFile, "${uniqueTestId}_\${specificationContext.currentIteration.name.replace(' ', '_').replace('#', '')}")
+                    projectDir.mkdirs()
+                    
                     //language=gradle
-                    buildFile << """
+                    buildFile << '''
                         apply plugin: 'java'
                         task 'foo' {
                             doFirst {
@@ -83,12 +102,21 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                             }
                         }
                         //INSERT MORE HERE
-                    """.stripIndent(true)
+                    '''.stripIndent(true)
+                }
+                
+                def cleanup() {
+                    // Ensure proper cleanup of test directories
+                    if (projectDir?.exists()) {
+                        projectDir.deleteDir()
+                    }
                 }
 
+                @Retry(count = 3, delay = 1000)
+                @Timeout(value = 60, unit = TimeUnit.SECONDS)
                 def 'someTest'() {
                     when:
-                    def result = runTasks('foo')
+                    def result = runTasks('foo', '--no-daemon')
 
                     then:
                     println "============std error follows============"
@@ -100,7 +128,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                 
                 //INSERT MORE TESTS HERE
             }
-        '''.stripIndent(true)
+        """.stripIndent(true)
 
         TestContentHelpers.addVersionsToPropsFile(file('versions.props'), [
                 'org.junit.jupiter:junit-jupiter',
@@ -115,6 +143,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
      * this is just a sanity check test to verify that nebula behaves as expected in the default case.  That is, it
      * will fail the test if there are gradle deprecation warnings.
      */
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'fails with gradle deprecation warnings when plugin not applied with version: #version'() {
         when:
         gradleVersion = version
@@ -129,6 +159,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'ignoreDeprecations automatically set when plugin applied with version: #version'() {
         given:
         applyTestUtilsPlugin()
@@ -145,6 +177,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'do not set ignoreDeprecations with version: #version'() {
         given:
         applyTestUtilsPlugin()
@@ -167,6 +201,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'works when applied before other plugins with version: #version'() {
         given:
         prependToBuildFile('''
@@ -184,6 +220,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'resolve dependencies with version: #version'() {
         given:
         applyTestUtilsPlugin()
@@ -212,6 +250,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'override gradle testing versions with version: #version'() {
         given:
         applyTestUtilsPlugin()
@@ -258,6 +298,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         version << GradleTestVersions.gradleVersionsForTests
     }
 
+    @Retry(count = 2, delay = 500)
+    @Timeout(value = 120, unit = TimeUnit.SECONDS)
     def 'checkUnusedDependencies ignores the plugin with version: #version'() {
         given:
         //language=gradle

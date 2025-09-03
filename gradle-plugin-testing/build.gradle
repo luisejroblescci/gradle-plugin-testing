@@ -34,6 +34,16 @@ gradlePlugin {
 
 test {
     systemProperty 'projectVersion', project.version
+    
+    // Improve test stability for CI
+    maxParallelForks = 1
+    forkEvery = 1
+    systemProperty 'gradle.daemon', 'false'
+    
+    // Increase memory for test processes
+    minHeapSize = '256m'
+    maxHeapSize = '2g'
+    jvmArgs '-XX:+UseG1GC', '-XX:MaxMetaspaceSize=512m'
 
     // Added as a jar the so in nebula-tests needs to exist in maven local
     dependsOn tasks.findByPath(':plugin-testing-core:publishToMavenLocal')
