@@ -27,4 +27,13 @@ class AbstractTestingPluginSpec extends IntegrationSpec{
         String[] strings = tasks + ["-P${PluginTestingPlugin.PLUGIN_VERSION_PROPERTY_NAME}=${projectVersion}".toString()]
         return super.runTasks(strings)
     }
+    
+    def cleanup() {
+        // Stop gradle daemon after each test to prevent shared state between test iterations
+        try {
+            runTasks('--stop')
+        } catch (Exception ignored) {
+            // Ignore exceptions during cleanup
+        }
+    }
 }
