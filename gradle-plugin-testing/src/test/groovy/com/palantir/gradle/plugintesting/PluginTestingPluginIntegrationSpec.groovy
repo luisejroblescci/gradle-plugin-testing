@@ -26,6 +26,9 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
     File specUnderTest
 
     def setup() {
+        // Clean up any leftover gradle daemons to prevent shared state between test iterations
+        runTasks('--stop')
+        
         //language=gradle
         buildFile << """
             buildscript {
@@ -60,6 +63,9 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
             }
             tasks.withType(Test) {
                 useJUnitPlatform()
+                // Ensure tests run in isolation to prevent flaky behavior
+                forkEvery = 1
+                maxParallelForks = 1
             }
         """.stripIndent(true)
 
@@ -88,7 +94,18 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
                 def 'someTest'() {
                     when:
-                    def result = runTasks('foo')
+                    // Add unique identifier to prevent conflicts between parameterized test runs
+                    def uniqueId = System.currentTimeMillis().toString()
+                    buildFile << \"\"\"
+                        task 'foo\${uniqueId}' {
+                            doFirst {
+                                //simulate that gradle reports the test did something deprecated
+                                //This is a string that IntegrationBase.checkForDeprecations looks for
+                                println \"This behaviour has been deprecated and is scheduled to be removed in Gradle\"
+                            }
+                        }
+                    \"\"\".stripIndent(true)
+                    def result = runTasks(\"foo\${uniqueId}\")
 
                     then:
                     println "============std error follows============"
@@ -118,7 +135,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
     def 'fails with gradle deprecation warnings when plugin not applied with version: #version'() {
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.standardOutput.contains('HelloWorldSpec > someTest FAILED')
@@ -135,7 +153,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.success
@@ -156,7 +175,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.standardOutput.contains('HelloWorldSpec > someTest FAILED')
@@ -175,7 +195,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.success
@@ -201,7 +222,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.success
@@ -234,7 +256,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     gradleVersion = configuredVersion
             
                     then:
-                    def result = runTasks('test')
+                    def result = runTasks('--no-daemon', 'test')
                     println "============std error from test with version============"
                     println result.standardError
                     println "============std error from test with version============"
@@ -248,7 +270,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('test')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'test')
 
         then:
         result.standardOutput.contains('test with version: #configuredVersion > test with version: 7.6.4')
@@ -292,7 +315,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
         when:
         gradleVersion = version
-        def result = runTasks('checkUnusedDependencies')
+        // Use no-daemon to prevent state sharing between test iterations
+        def result = runTasks('--no-daemon', 'checkUnusedDependencies')
 
         then:
         !result.standardOutput.contains('Found 1 dependencies unused during compilation')
