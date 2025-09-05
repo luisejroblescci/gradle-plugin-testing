@@ -26,6 +26,11 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
     File specUnderTest
 
     def setup() {
+        // Enhanced resource isolation with JVM system property isolation
+        System.setProperty('org.gradle.daemon', 'false')  // Disable daemon for more predictable behavior
+        System.setProperty('org.gradle.parallel', 'false')  // Disable parallel execution in tests
+        System.setProperty('org.gradle.configureondemand', 'false')  // Disable configuration on demand
+        
         //language=gradle
         buildFile << """
             buildscript {
@@ -77,8 +82,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                         apply plugin: 'java'
                         task 'foo' {
                             doFirst {
-                                //simulate that gradle reports the test did something deprecated
-                                //This is a string that IntegrationBase.checkForDeprecations looks for
+                                // Deterministic deprecation warning for test consistency
                                 println "This behaviour has been deprecated and is scheduled to be removed in Gradle"
                             }
                         }
@@ -91,10 +95,6 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     def result = runTasks('foo')
 
                     then:
-                    println "============std error follows============"
-                    println result.standardError
-                    println "============std out follows============"
-                    println result.standardOutput
                     result.success
                 }
                 
