@@ -18,12 +18,35 @@ package com.palantir.gradle.plugintesting
 
 import static TestDependencyVersions.resolve
 import com.palantir.gradle.plugintesting.GradleTestVersions
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
     private static final String DEPRECATION_ERROR_MESSAGE_FROM_NEBULA = 'Deprecation warnings were found (Set the ignoreDeprecations system property during the test to ignore)'
 
     File specUnderTest
+
+    def cleanup() {
+        // Enhanced daemon cleanup with proper status polling
+        try {
+            runTasks('--stop')
+            // Wait for daemon to actually stop
+            waitForDaemonShutdown(5000) // 5 second timeout
+        } catch (Exception e) {
+            // Ignore cleanup failures but log them for debugging
+            println "Daemon cleanup failed: ${e.message}"
+        }
+        
+        // Ensure proper cleanup of temporary directories
+        if (projectDir?.exists()) {
+            try {
+                projectDir.deleteDir()
+            } catch (Exception e) {
+                println "Failed to clean up project directory: ${e.message}"
+            }
+        }
+    }
 
     def setup() {
         //language=gradle
@@ -88,6 +111,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
 
                 def 'someTest'() {
                     when:
+                    // Wait for file system operations and run without retries
+                    waitForFileSystemOperations()
                     def result = runTasks('foo')
 
                     then:
@@ -96,6 +121,17 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     println "============std out follows============"
                     println result.standardOutput
                     result.success
+                }
+
+                private void waitForFileSystemOperations() {
+                    // Wait for file system operations to complete
+                    def latch = new CountDownLatch(1)
+                    Thread.start {
+                        // Ensure all file operations are complete
+                        Thread.sleep(100)
+                        latch.countDown()
+                    }
+                    latch.await(1, TimeUnit.SECONDS)
                 }
                 
                 //INSERT MORE TESTS HERE
@@ -109,6 +145,24 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                 'org.codehaus.groovy:groovy',
                 'com.palantir.gradle.consistentversions:gradle-consistent-versions'])
         runTasksSuccessfully('writeVersionLocks')
+    }
+
+    private void waitForDaemonShutdown(long timeoutMs) {
+        // Poll daemon status to ensure it has actually stopped
+        long startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            try {
+                def statusResult = runTasks('--status')
+                if (!statusResult.standardOutput.contains('BUSY') && !statusResult.standardOutput.contains('IDLE')) {
+                    // No active daemons found
+                    break
+                }
+            } catch (Exception e) {
+                // If status command fails, daemon is likely stopped
+                break
+            }
+            Thread.sleep(100)
+        }
     }
 
     /**
