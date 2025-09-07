@@ -38,6 +38,15 @@ test {
     // Added as a jar the so in nebula-tests needs to exist in maven local
     dependsOn tasks.findByPath(':plugin-testing-core:publishToMavenLocal')
     dependsOn tasks.findByPath(':configuration-cache-spec:publishToMavenLocal')
+    
+    // Reduce resource contention in CI by limiting parallel execution
+    maxParallelForks = Math.max(1, (int) (Runtime.getRuntime().availableProcessors() / 2))
+    
+    // Increase timeouts for flaky tests
+    timeout = Duration.ofMinutes(10)
+    
+    // Configure JVM for better stability
+    jvmArgs '-Xmx2g', '-XX:+UseG1GC', '-XX:MaxGCPauseMillis=100'
 }
 
 gradleTestUtils {
