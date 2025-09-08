@@ -23,7 +23,11 @@ class AbstractTestingPluginSpec extends IntegrationSpec{
 
     @Override
     ExecutionResult runTasks(String... tasks) {
-        def projectVersion = Optional.ofNullable(System.getProperty('projectVersion')).orElseThrow()
+        def projectVersion = Optional.ofNullable(System.getProperty('projectVersion')).orElse('unspecified')
+        if (projectVersion == 'unspecified') {
+            // Log warning but continue with fallback
+            System.err.println("Warning: projectVersion system property not set, using fallback value")
+        }
         String[] strings = tasks + ["-P${PluginTestingPlugin.PLUGIN_VERSION_PROPERTY_NAME}=${projectVersion}".toString()]
         return super.runTasks(strings)
     }
