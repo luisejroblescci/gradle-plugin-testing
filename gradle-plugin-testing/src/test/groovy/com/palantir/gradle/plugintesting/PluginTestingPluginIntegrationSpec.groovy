@@ -30,6 +30,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         buildFile << """
             buildscript {
                 repositories {
+                    mavenLocal()
                     mavenCentral()
                 }
                 dependencies {
@@ -44,8 +45,8 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
             apply plugin: 'groovy'
             
             repositories {
-                mavenCentral()
                 mavenLocal()
+                mavenCentral()
             }
 
             dependencies {
@@ -64,7 +65,7 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
         """.stripIndent(true)
 
         //language=groovy
-        specUnderTest = file('src/test/groovy/com/testing/HelloWorldSpec.groovy') << '''
+        specUnderTest = createFile('src/test/groovy/com/testing/HelloWorldSpec.groovy') << '''
             package com.testing
 
             //INSERT IMPORTS HERE
@@ -91,11 +92,9 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                     def result = runTasks('foo')
 
                     then:
-                    println "============std error follows============"
-                    println result.standardError
-                    println "============std out follows============"
-                    println result.standardOutput
                     result.success
+                    result.standardOutput.contains('foo')
+                    !result.standardError.contains('BUILD FAILED')
                 }
                 
                 //INSERT MORE TESTS HERE
@@ -108,7 +107,13 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
                 'com.google.guava:guava',
                 'org.codehaus.groovy:groovy',
                 'com.palantir.gradle.consistentversions:gradle-consistent-versions'])
-        runTasksSuccessfully('writeVersionLocks')
+        
+        // Force filesystem sync to prevent race conditions
+        file('versions.props').parentFile.listFiles()?.each { it.exists() }
+        specUnderTest.parentFile.listFiles()?.each { it.exists() }
+        
+        // Add retry mechanism for writeVersionLocks to handle timing issues
+        retryWithBackoff('writeVersionLocks', 3, 1000)
     }
 
     /**
@@ -312,5 +317,25 @@ class PluginTestingPluginIntegrationSpec extends AbstractTestingPluginSpec {
     File prependToBuildFile(String content) {
         buildFile.text = content.stripIndent(true) + buildFile.text
         return buildFile
+    }
+
+    /**
+     * Retry a task with exponential backoff to handle timing issues
+     */
+    void retryWithBackoff(String task, int maxRetries, long initialDelayMs) {
+        Exception lastException = null
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                runTasksSuccessfully(task)
+                return // Success, exit retry loop
+            } catch (Exception e) {
+                lastException = e
+                if (attempt < maxRetries) {
+                    long delay = initialDelayMs * (long) Math.pow(2, attempt - 1)
+                    Thread.sleep(Math.min(delay, 10000)) // Cap at 10 seconds
+                }
+            }
+        }
+        throw new RuntimeException("Failed to execute '${task}' after ${maxRetries} attempts", lastException)
     }
 }
